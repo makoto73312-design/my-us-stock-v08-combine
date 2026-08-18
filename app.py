@@ -132,37 +132,52 @@ def extract_stock_from_chunk(df_chunk, ticker):
     return pd.DataFrame()
 
 # ==========================================
-# 4. 總經與基本面雷達
+# 4. 總經與基本面雷達 (更強健的 VIX 抓取邏輯)
 # ==========================================
 @st.cache_data(ttl=1800)
 def fetch_us_macro_dataframe():
     try:
-        macro_raw = yf.download(["^VIX", "SPY"], period="2y", progress=False)
-        vix_df = extract_stock_from_chunk(macro_raw, '^VIX')
-        spy_df = extract_stock_from_chunk(macro_raw, 'SPY')
+        # 使用獨立抓取取代 yf.download 多標的批次下載，避免 MultiIndex 欄位解析失敗
+        vix_tk = yf.Ticker("^VIX")
+        vix_df = vix_tk.history(period="2y")
         
+        spy_tk = yf.Ticker("SPY")
+        spy_df = spy_tk.history(period="2y")
+
+        if vix_df.empty or spy_df.empty:
+            raise ValueError("Yahoo Finance 傳回空數據")
+
+        vix_df = clean_and_flatten_df(vix_df)
+        spy_df = clean_and_flatten_df(spy_df)
+
         vix_c = vix_df[['Close']].rename(columns={'Close': 'VIX'})
         spy_c = spy_df[['Close']].rename(columns={'Close': 'SPY_Close'})
-        
+
         vix_c.index = pd.to_datetime(pd.to_datetime(vix_c.index).date)
         spy_c.index = pd.to_datetime(pd.to_datetime(spy_c.index).date)
 
         spy_c['SPY_MA200'] = spy_c['SPY_Close'].rolling(200).mean().fillna(spy_c['SPY_Close'])
         spy_c['Market_Bull'] = spy_c['SPY_Close'] >= spy_c['SPY_MA200']
-        
-        df_macro = spy_c.join(vix_c, how='left').ffill().bfill().dropna()
+
+        df_macro = spy_c.join(vix_c, how='inner').ffill().bfill().dropna()
+
         latest_vix = float(df_macro['VIX'].iloc[-1])
         latest_bull = bool(df_macro['Market_Bull'].iloc[-1])
-        
-        if latest_vix >= 25 or not latest_bull: posture_auto = "🥶 極度謹慎型 (大盤空頭/高恐慌)"
-        elif latest_vix <= 15 and latest_bull: posture_auto = "🚀 大膽進攻型 (晴天多頭行情)"
-        else: posture_auto = "🛡️ 標準平衡型 (常態橫盤整理)"
-            
+
+        if latest_vix >= 25 or not latest_bull:
+            posture_auto = "🥶 極度謹慎型 (大盤空頭/高恐慌)"
+        elif latest_vix <= 15 and latest_bull:
+            posture_auto = "🚀 大膽進攻型 (晴天多頭行情)"
+        else:
+            posture_auto = "🛡️ 標準平衡型 (常態橫盤整理)"
+
         return df_macro, latest_vix, latest_bull, posture_auto, "SUCCESS"
+
     except Exception as e:
+        # 當網路徹底斷線時才會降級為備援值
         dates = pd.date_range(end=pd.Timestamp.now().normalize(), periods=500, freq='D')
         df_macro = pd.DataFrame({'VIX': 18.0, 'Market_Bull': True, 'SPY_Close': 500.0}, index=dates)
-        return df_macro, 18.0, True, "🛡️ 標準平衡型 (預設)", f"ERROR: {str(e)}"
+        return df_macro, 18.0, True, "🛡️ 標準平衡型 (預設備援)", f"ERROR: {str(e)}"
 
 df_macro, vix_score, is_spy_bull, market_posture, macro_status = fetch_us_macro_dataframe()
 
