@@ -869,22 +869,49 @@ with tab_7d_bb:
         st.info("💡 請先啟動沙盒掃描引擎。")
 
 # ==========================================
-# Tab 4: 沙盒 - 五大策略昨日買訊成效
+# Tab 4: 沙盒 - 五大策略昨日買訊成效 (完整統計指標版)
 # ==========================================
 with tab_verify_sandbox:
     if st.session_state.calculated and not st.session_state.final_df.empty:
         st.markdown("## ⚡ **沙盒策略：昨日買訊 vs 今日實質成效驗證**")
+        st.caption("完整檢驗昨日 (T-1) 觸發沙盒 5 大策略買訊的標的，在今日 (T) 開盤實質成交後的真實盤中與收盤表現。")
+
         df_all = st.session_state.final_df.copy()
         df_yest_buy = df_all[df_all['昨日買訊'] == True].copy()
 
         if not df_yest_buy.empty:
+            # 轉換數值以進行精確平均與金額計算
+            df_yest_buy['num_ret'] = df_yest_buy['今日實質漲跌'].str.rstrip('%').str.replace('+', '').astype(float)
+            
+            total_signals = len(df_yest_buy)
             wins = len(df_yest_buy[df_yest_buy['當日驗證'] == "🟢 獲利"])
-            st.metric("今日開盤成交勝率", f"{(wins / len(df_yest_buy)) * 100:.1f}%")
-            st.dataframe(df_yest_buy[['股票代號', '策略手法', '今日開盤', '今日收盤', '今日實質漲跌', '當日驗證', '期望值 Expectancy']], use_container_width=True, hide_index=True)
+            win_rate_yest = (wins / total_signals) * 100
+            avg_today_ret = df_yest_buy['num_ret'].mean()
+            
+            # 結合第一引擎的實務金額模擬 (假設每筆下單 $1,000 美金)
+            total_dollar_pnl = (df_yest_buy['num_ret'] / 100 * 1000).sum()
+
+            # 📊 四大核心指標卡
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            col_v1.metric("昨日觸發買訊總數", f"{total_signals} 筆")
+            col_v2.metric("今日開盤成交勝率", f"{win_rate_yest:.1f}%")
+            col_v3.metric("今日平均實質報酬", f"{avg_today_ret:+.2f}%")
+            col_v4.metric("模擬累積總損益 ($1k/筆)", f"${total_dollar_pnl:,.2f}")
+
+            st.markdown("### 📋 **買訊明細與實質績效列表**")
+            st.dataframe(
+                df_yest_buy[[
+                    '股票代號', '策略手法', '當前市價', '今日開盤', 
+                    '今日收盤', '今日實質漲跌', '當日驗證', 
+                    '期望值 Expectancy', '七維戰術矩陣', '布林通道位階'
+                ]], 
+                use_container_width=True, 
+                hide_index=True
+            )
         else:
-            st.info("💡 昨日未有任何標的觸發沙盒 5 大策略的買進訊號。")
+            st.info("💡 昨日 (T-1 日) 未有任何標的觸發沙盒 5 大策略的新買訊，市場維持常態觀望。")
     else:
-        st.info("💡 請先啟動沙盒掃描引擎。")
+        st.info("💡 請先點擊側邊欄「🚀 啟動沙盒全自動多因子掃描引擎」開始運算。")
 
 # ==========================================
 # Tab 5: Plotly 高對比 K 線圖與軌跡驗證
