@@ -848,4 +848,152 @@ with tab_sandbox_main:
             st.dataframe(df_cash, use_container_width=True, hide_index=True)
 
         st.divider()
-        st.markdown("### 📋 **
+        st.markdown("### 📋 **全標的綜合總表 (Master Table)**")
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+    else:
+        st.info("💡 請點擊側邊欄「🚀 啟動沙盒全自動多因子掃描引擎」以開始沙盒運算。")
+
+# ==========================================
+# Tab 3: 沙盒 - 七維矩陣與布林專家診斷
+# ==========================================
+with tab_7d_bb:
+    if st.session_state.calculated and not st.session_state.final_df.empty:
+        df_all = st.session_state.final_df.copy()
+        st.markdown("## 🛡️ **一、 七維量化戰術矩陣**")
+        
+        m_tabs = st.tabs(["🔥 高分極強區 (5~7分)", "⚖️ 常態整理區 (3~4分)", "⚠️ 偏弱觀望區 (0~2分)"])
+        with m_tabs[0]: st.dataframe(df_all[df_all['7D得分'] >= 5][['股票代號', '當前市價', '策略手法', '水晶球黃金濾網', '七維戰術矩陣', '倉位狀態', '期望值 Expectancy']], use_container_width=True, hide_index=True)
+        with m_tabs[1]: st.dataframe(df_all[(df_all['7D得分'] >= 3) & (df_all['7D得分'] < 5)][['股票代號', '當前市價', '策略手法', '水晶球黃金濾網', '七維戰術矩陣', '倉位狀態', '期望值 Expectancy']], use_container_width=True, hide_index=True)
+        with m_tabs[2]: st.dataframe(df_all[df_all['7D得分'] < 3][['股票代號', '當前市價', '策略手法', '水晶球黃金濾網', '七維戰術矩陣', '倉位狀態', '期望值 Expectancy']], use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.markdown("## 📈 **二、 布林通道 6 大分類診斷**")
+        bb_tabs = st.tabs(["🔥 帶狀極致壓縮", "🚀 突破布林上軌", "🛡️ 貼近 20MA 中軌", "💎 觸及布林下軌", "⚠️ 跌破 20MA 中軌", "⚖️ 常態通道整理"])
+        bb_categories = ["🔥 帶狀極致壓縮 (準備發動)", "🚀 突破布林上軌 (強勢多頭)", "🛡️ 貼近 20MA 中軌 (回檔支撐)", "💎 觸及布林下軌 (超賣回歸)", "⚠️ 跌破 20MA 中軌 (離場防守)", "⚖️ 常態通道內整理"]
+        
+        for idx, cat in enumerate(bb_categories):
+            with bb_tabs[idx]:
+                st.dataframe(df_all[df_all['布林通道位階'] == cat][['股票代號', '當前市價', '策略手法', '水晶球黃金濾網', '布林通道位階', '倉位狀態', '期望值 Expectancy']], use_container_width=True, hide_index=True)
+    else:
+        st.info("💡 請先啟動沙盒掃描引擎。")
+
+# ==========================================
+# Tab 4: 沙盒 - 五大策略昨日買訊成效
+# ==========================================
+with tab_verify_sandbox:
+    if st.session_state.calculated and not st.session_state.final_df.empty:
+        st.markdown("## ⚡ **沙盒策略：昨日買訊 vs 今日實質成效驗證**")
+        st.caption("完整檢驗昨日 (T-1) 觸發沙盒 5 大策略買訊的標的，在今日 (T) 開盤實質成交後的真實盤中與收盤表現。")
+
+        df_all = st.session_state.final_df.copy()
+        df_yest_buy = df_all[df_all['昨日買訊'] == True].copy()
+
+        if enable_crystal_gate:
+            df_yest_buy = df_yest_buy[df_yest_buy['水晶球黃金濾網'].str.contains("Pass")].copy()
+            st.info("🔮 **目前僅顯示通過「水晶球勝率二次濾網」之黃金買訊**")
+
+        if not df_yest_buy.empty:
+            df_yest_buy['num_ret'] = df_yest_buy['今日實質漲跌'].str.rstrip('%').str.replace('+', '').astype(float)
+            
+            total_signals = len(df_yest_buy)
+            wins = len(df_yest_buy[df_yest_buy['當日驗證'] == "🟢 獲利"])
+            win_rate_yest = (wins / total_signals) * 100
+            avg_today_ret = df_yest_buy['num_ret'].mean()
+            total_dollar_pnl = (df_yest_buy['num_ret'] / 100 * 1000).sum()
+
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            col_v1.metric("昨日觸發買訊總數", f"{total_signals} 筆")
+            col_v2.metric("今日開盤成交勝率", f"{win_rate_yest:.1f}%")
+            col_v3.metric("今日平均實質報酬", f"{avg_today_ret:+.2f}%")
+            col_v4.metric("模擬累積總損益 ($1k/筆)", f"${total_dollar_pnl:,.2f}")
+
+            st.markdown("### 📋 **買訊明細與實質績效列表**")
+            st.dataframe(
+                df_yest_buy[[
+                    '股票代號', '策略手法', '當前市價', '水晶球黃金濾網', '今日開盤', 
+                    '今日收盤', '今日實質漲跌', '當日驗證', 
+                    '期望值 Expectancy', '七維戰術矩陣', '布林通道位階'
+                ]], 
+                use_container_width=True, 
+                hide_index=True
+            )
+        else:
+            st.info("💡 昨日 (T-1 日) 未有任何標的觸發符合「水晶球勝率濾網」的新買訊。")
+    else:
+        st.info("💡 請先點擊側邊欄「🚀 啟動沙盒全自動多因子掃描引擎」開始運算。")
+
+# ==========================================
+# Tab 5: Plotly 高對比 K 線圖與軌跡驗證
+# ==========================================
+with tab_chart:
+    if st.session_state.calculated:
+        col_tk, col_st = st.columns(2)
+        with col_tk: debug_ticker = st.selectbox("🎯 選擇美股代號", ticker_list, key="us_debug_tk")
+        with col_st: debug_strat = st.selectbox("🔮 選擇策略手法", ["A: 激進動能型", "B: 穩健波段型", "C: 槓桿強勢型", "D: 均值回歸抄底型", "E: 價量動能流跟隨型"], key="us_debug_st")
+        
+        db_key = (debug_ticker, debug_strat)
+        if db_key in st.session_state.detail_db:
+            data_pack = st.session_state.detail_db[db_key]
+            logs_df, buys, sells, v_df = data_pack["logs"], data_pack["buys"], data_pack["sells"], data_pack["v_df"]
+            
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(
+                x=v_df.index, open=v_df['Open'], high=v_df['High'], low=v_df['Low'], close=v_df['Close'],
+                name='K線', increasing_line_color='#00E676', increasing_fillcolor='#00E676',
+                decreasing_line_color='#FF3333', decreasing_fillcolor='#FF3333'
+            ))
+            
+            if 'BB_Upper' in v_df.columns:
+                fig.add_trace(go.Scatter(x=v_df.index, y=v_df['BB_Upper'], mode='lines', name='布林上軌', line=dict(color='#FFA726', width=1.2, dash='dash')))
+                fig.add_trace(go.Scatter(x=v_df.index, y=v_df['BB_Lower'], mode='lines', name='布林下軌', fill='tonexty', fillcolor='rgba(255,167,38,0.08)', line=dict(color='#FFA726', width=1.2, dash='dash')))
+                fig.add_trace(go.Scatter(x=v_df.index, y=v_df['BB_Mid'], mode='lines', name='20MA 中軌', line=dict(color='#29B6F6', width=1.5)))
+            
+            if len(buys) > 0: fig.add_trace(go.Scatter(x=[b[0] for b in buys], y=[b[1] for b in buys], mode='markers', name='🟢 BUY', marker=dict(symbol='triangle-up', size=14, color='#00FF00')))
+            if len(sells) > 0: fig.add_trace(go.Scatter(x=[s[0] for s in sells], y=[s[1] for s in sells], mode='markers', name='🔴 SELL', marker=dict(symbol='triangle-down', size=14, color='#FF2222')))
+            
+            fig.update_layout(
+                title=f"<b>美股 {debug_ticker} - {debug_strat} 高對比 K 線軌跡圖</b>",
+                template="plotly_dark", paper_bgcolor='#0D1117', plot_bgcolor='#161B22',
+                xaxis_rangeslider_visible=False, margin=dict(l=40, r=40, t=50, b=40)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            if not logs_df.empty: st.dataframe(logs_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("💡 請先啟動沙盒掃描引擎。")
+
+# ==========================================
+# Tab 6: 量化數據匯出中心 (一鍵下載完整特徵 CSV)
+# ==========================================
+with tab_export:
+    st.header("📥 一鍵匯出雙引擎全維度分析特徵表")
+    st.markdown("此區塊將**總經環境、基本面、7維矩陣、布林分類、水晶球濾網判定、兩大引擎當日訊號與昨日驗證**全部整合為單一張標準 CSV 檔案。")
+    
+    if st.session_state.calculated and not st.session_state.final_df.empty:
+        df_export = st.session_state.final_df.copy()
+        
+        df_export['Macro_VIX'] = vix_score
+        df_export['Macro_Market_Bull'] = is_spy_bull
+        df_export['Macro_Posture'] = market_posture
+        df_export['Scan_Timestamp'] = st.session_state.get('scan_time_us', '')
+        
+        pullback_set = set(st.session_state.get('valid_pullbacks', []))
+        df_export['第一引擎_日線拉回符合'] = df_export['股票代號'].apply(lambda x: "🟢 是" if x in pullback_set else "⚪ 否")
+        
+        csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
+        
+        col_ex1, col_ex2 = st.columns([1, 2])
+        with col_ex1:
+            st.download_button(
+                label="💾 下載全維度量化分析 CSV 檔案",
+                data=csv_data,
+                file_name=f"quant_us_full_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_ex2:
+            st.success(f"✅ 特徵資料集建置完成！共包含 {len(df_export)} 筆策略評估報告。")
+            
+        st.markdown("### 🔍 匯出資料預覽 (前 10 筆)")
+        st.dataframe(df_export.head(10), use_container_width=True, hide_index=True)
+    else:
+        st.info("💡 請先點擊側邊欄「🚀 啟動沙盒全自動多因子掃描引擎」產出資料後，即可在此一鍵下載 CSV。")
